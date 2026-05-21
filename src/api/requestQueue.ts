@@ -34,6 +34,8 @@ const inFlightSelectIds = new Set<number>();
 const pendingUnselectIds = new Set<number>();
 const inFlightUnselectIds = new Set<number>();
 
+const knownSelectedIds = new Set<number>();
+
 export function getPendingAddIds(): Set<number> {
   return new Set([...Array.from(pendingAddIds), ...Array.from(inFlightAddIds)]);
 }
@@ -44,6 +46,10 @@ export function getPendingSelectIds(): Set<number> {
 
 export function getPendingUnselectIds(): Set<number> {
   return new Set([...Array.from(pendingUnselectIds), ...Array.from(inFlightUnselectIds)]);
+}
+
+export function getKnownSelectedIds(): Set<number> {
+  return new Set(knownSelectedIds);
 }
 
 interface Settler<T> {
@@ -212,10 +218,12 @@ async function flushChangeQueue() {
           if (errMsg) {
             settler.reject(new Error(errMsg));
           } else {
+            knownSelectedIds.add(id);
             settler.resolve({ success: true, selectedId: id });
           }
         }
       }
+      invalidateReadQueue();
     } catch (err: any) {
       for (const id of selectsToFlush) {
         const settler = inFlightSelectSettlers.get(id);
@@ -246,10 +254,12 @@ async function flushChangeQueue() {
           if (errMsg) {
             settler.reject(new Error(errMsg));
           } else {
+            knownSelectedIds.delete(id);
             settler.resolve({ success: true, unselectedId: id });
           }
         }
       }
+      invalidateReadQueue();
     } catch (err: any) {
       for (const id of unselectsToFlush) {
         const settler = inFlightUnselectSettlers.get(id);
@@ -290,6 +300,22 @@ const pendingReadSettlers = new Map<string, Settler<PaginatedResponse>[]>();
 const pendingReadMeta = new Map<string, ReadMeta>();
 let readTimeout: NodeJS.Timeout | null = null;
 
+export function invalidateReadQueue() {
+  if (readTimeout) {
+    clearTimeout(readTimeout);
+    readTimeout = null;
+  }
+  // Reject currently pending read promises to ensure outdated results are canceled
+  for (const [key, settlersList] of Array.from(pendingReadSettlers.entries())) {
+    for (const s of settlersList) {
+      s.reject(new AbortError("Query cancelled due to state invalidation"));
+    }
+  }
+  pendingReadSettlers.clear();
+  pendingReadPromises.clear();
+  pendingReadMeta.clear();
+}
+
 function flushReadQueue() {
   readTimeout = null;
   const settlersSnapshot = new Map(pendingReadSettlers);
@@ -311,9 +337,19 @@ function flushReadQueue() {
 
     fetchPromise
       .then((data) => {
+        if (meta.type === "selected") {
+          for (const item of data.items) {
+            knownSelectedIds.add(item.id);
+          }
+        } else if (meta.type === "available") {
+          for (const item of data.items) {
+            knownSelectedIds.delete(item.id);
+          }
+        }
         for (const s of settlersList) {
           s.resolve(data);
         }
+        notifyQueue();
       })
       .catch((err) => {
         for (const s of settlersList) {

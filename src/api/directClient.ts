@@ -1,20 +1,47 @@
 import { PaginatedResponse } from "../types";
 
 /**
- * Handles error extraction from standard API responses.
+ * Handles error extraction from standard API responses with detailed diagnostics.
  */
-async function handleResponse<T>(response: Response): Promise<T> {
+async function handleResponse<T>(
+  response: Response,
+  options?: { url: string; method?: string; body?: any }
+): Promise<T> {
   if (!response.ok) {
-    let errorMessage = `HTTP Error ${response.status}`;
+    let errorDetail = "";
     try {
-      const data = await response.json();
-      if (data && typeof data.error === "string") {
-        errorMessage = data.error;
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        if (data && typeof data.error === "string") {
+          errorDetail = data.error;
+        } else {
+          errorDetail = text;
+        }
+      } catch {
+        errorDetail = text;
       }
     } catch {
-      // ignore json parse error, fall back to default
+      errorDetail = "No body details";
     }
-    throw new Error(errorMessage);
+
+    const method = options?.method || "GET";
+    const url = options?.url || response.url;
+    const errorMsg = `${method} ${url} failed with ${response.status}: ${errorDetail || response.statusText}`;
+
+    // Log diagnostic payload for rapid developer tracking in non-production environments
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[API Error Diagnostics]", {
+        method,
+        url,
+        status: response.status,
+        statusText: response.statusText,
+        payload: options?.body,
+        errorDetail,
+      });
+    }
+
+    throw new Error(errorMsg);
   }
   return response.json() as Promise<T>;
 }
@@ -33,8 +60,9 @@ export const directClient = {
     if (cursor !== null && cursor > 0) params.append("cursor", String(cursor));
     params.append("limit", String(limit));
 
-    const response = await fetch(`/api/items/available?${params.toString()}`);
-    return handleResponse<PaginatedResponse>(response);
+    const url = `/api/items/available?${params.toString()}`;
+    const response = await fetch(url);
+    return handleResponse<PaginatedResponse>(response, { url, method: "GET" });
   },
 
   /**
@@ -50,8 +78,9 @@ export const directClient = {
     if (cursor !== null && cursor > 0) params.append("cursor", String(cursor));
     params.append("limit", String(limit));
 
-    const response = await fetch(`/api/items/selected?${params.toString()}`);
-    return handleResponse<PaginatedResponse>(response);
+    const url = `/api/items/selected?${params.toString()}`;
+    const response = await fetch(url);
+    return handleResponse<PaginatedResponse>(response, { url, method: "GET" });
   },
 
   /**
@@ -73,7 +102,7 @@ export const directClient = {
       addedIds: number[];
       skippedIds: number[];
       errors: { id: any; reason: string }[];
-    }>(response);
+    }>(response, { url: "/api/items/add-batch", method: "POST", body: { ids } });
   },
 
   /**
@@ -95,7 +124,7 @@ export const directClient = {
       selectedIds: number[];
       skippedIds: number[];
       errors: { id: any; reason: string }[];
-    }>(response);
+    }>(response, { url: "/api/items/select-batch", method: "POST", body: { ids } });
   },
 
   /**
@@ -117,7 +146,7 @@ export const directClient = {
       unselectedIds: number[];
       skippedIds: number[];
       errors: { id: any; reason: string }[];
-    }>(response);
+    }>(response, { url: "/api/items/unselect-batch", method: "POST", body: { ids } });
   },
 
   /**
@@ -129,7 +158,11 @@ export const directClient = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    return handleResponse<{ success: boolean; addedId: number }>(response);
+    return handleResponse<{ success: boolean; addedId: number }>(response, {
+      url: "/api/items/add",
+      method: "POST",
+      body: { id },
+    });
   },
 
   /**
@@ -141,7 +174,11 @@ export const directClient = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    return handleResponse<{ success: boolean; selectedId: number }>(response);
+    return handleResponse<{ success: boolean; selectedId: number }>(response, {
+      url: "/api/items/select",
+      method: "POST",
+      body: { id },
+    });
   },
 
   /**
@@ -153,7 +190,11 @@ export const directClient = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    return handleResponse<{ success: boolean; unselectedId: number }>(response);
+    return handleResponse<{ success: boolean; unselectedId: number }>(response, {
+      url: "/api/items/unselect",
+      method: "POST",
+      body: { id },
+    });
   },
 
   /**
@@ -168,6 +209,10 @@ export const directClient = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderedVisibleIds, search }),
     });
-    return handleResponse<{ success: boolean }>(response);
+    return handleResponse<{ success: boolean }>(response, {
+      url: "/api/items/reorder",
+      method: "POST",
+      body: { orderedVisibleIds, search },
+    });
   },
 };

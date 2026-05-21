@@ -7,6 +7,7 @@ import {
   getPendingAddIds,
   getPendingSelectIds,
   getPendingUnselectIds,
+  getKnownSelectedIds,
 } from "../api/requestQueue";
 import {
   DndContext,
@@ -55,13 +56,18 @@ export default function Panel({
   const [pendingAddIds, setPendingAddIds] = useState<Set<number>>(new Set());
   const [pendingSelectIds, setPendingSelectIds] = useState<Set<number>>(new Set());
   const [pendingUnselectIds, setPendingUnselectIds] = useState<Set<number>>(new Set());
+  const [knownSelectedIds, setKnownSelectedIds] = useState<Set<number>>(new Set());
+  const [clickedIds, setClickedIds] = useState<Set<number>>(new Set());
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
+
+  const generationRef = useRef(0);
 
   useEffect(() => {
     function updateQueueState() {
       setPendingAddIds(new Set(getPendingAddIds()));
       setPendingSelectIds(new Set(getPendingSelectIds()));
       setPendingUnselectIds(new Set(getPendingUnselectIds()));
+      setKnownSelectedIds(new Set(getKnownSelectedIds()));
     }
     updateQueueState();
     return subscribeToQueue(updateQueueState);
@@ -92,29 +98,48 @@ export default function Panel({
   // Main list fetch effect: triggers when search filter changes or outer refresh trigger increments
   useEffect(() => {
     let active = true;
+    generationRef.current += 1;
+    const currentGen = generationRef.current;
 
     async function initialFetch() {
       setLoading(true);
       setError(null);
       try {
         let res: PaginatedResponse;
+        
+        // Task 3: Normal search reads go through queue; mutation reconciliation (indicated by refreshTrigger > 0)
+        // may bypass queued reads to prevent stale UI duplication.
+        const isReconciliation = refreshTrigger > 0;
+
         if (type === "available") {
-          res = await apiClient.fetchAvailable(debouncedSearch, null);
+          if (isReconciliation) {
+            res = await apiClient.fetchAvailableImmediate(debouncedSearch, null);
+          } else {
+            res = await apiClient.fetchAvailable(debouncedSearch, null);
+          }
         } else {
-          res = await apiClient.fetchSelected(debouncedSearch, null);
+          if (isReconciliation) {
+            res = await apiClient.fetchSelectedImmediate(debouncedSearch, null);
+          } else {
+            res = await apiClient.fetchSelected(debouncedSearch, null);
+          }
         }
 
-        if (active) {
+        if (active && currentGen === generationRef.current) {
           setItems(res.items);
           setNextCursor(res.nextCursor);
           setHasMore(res.hasMore);
         }
       } catch (err: any) {
-        if (active) {
+        if (err.name === "AbortError") {
+          // Ignore cancelled read queues gracefully
+          return;
+        }
+        if (active && currentGen === generationRef.current) {
           setError(err.message || "Failed to load items");
         }
       } finally {
-        if (active) {
+        if (active && currentGen === generationRef.current) {
           setLoading(false);
         }
       }
@@ -133,6 +158,9 @@ export default function Panel({
 
     setLoadingMore(true);
     setError(null);
+    generationRef.current += 1;
+    const currentGen = generationRef.current;
+
     try {
       let res: PaginatedResponse;
       if (type === "available") {
@@ -141,18 +169,27 @@ export default function Panel({
         res = await apiClient.fetchSelected(debouncedSearch, nextCursor);
       }
 
-      setItems((prev) => {
-        // Prevent duplicate IDs from entering state during high concurrency
-        const existingIds = new Set(prev.map((item) => item.id));
-        const filteredNew = res.items.filter((item) => !existingIds.has(item.id));
-        return [...prev, ...filteredNew];
-      });
-      setNextCursor(res.nextCursor);
-      setHasMore(res.hasMore);
+      if (currentGen === generationRef.current) {
+        setItems((prev) => {
+          // Prevent duplicate IDs from entering state during high concurrency
+          const existingIds = new Set(prev.map((item) => item.id));
+          const filteredNew = res.items.filter((item) => !existingIds.has(item.id));
+          return [...prev, ...filteredNew];
+        });
+        setNextCursor(res.nextCursor);
+        setHasMore(res.hasMore);
+      }
     } catch (err: any) {
-      setError(err.message || "Failed to load next page");
+      if (err.name === "AbortError") {
+        return;
+      }
+      if (currentGen === generationRef.current) {
+        setError(err.message || "Failed to load next page");
+      }
     } finally {
-      setLoadingMore(false);
+      if (currentGen === generationRef.current) {
+        setLoadingMore(false);
+      }
     }
   }
 
@@ -184,10 +221,24 @@ export default function Panel({
     };
   }, [hasMore, nextCursor, loading, loadingMore, debouncedSearch]);
 
-  // Action: Select or Unselect specific item
+  // Action: Select or Unselect specific item with optimistic UI removal & rollback
   async function handleToggleAction(id: number) {
+    if (clickedIds.has(id)) return;
+    setClickedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
     setActionLoadingId(id);
     setError(null);
+
+    const oldItems = [...items];
+    const oldNextCursor = nextCursor;
+    const oldHasMore = hasMore;
+
+    // Immediately remove X from local items state optimistically
+    setItems((prev) => prev.filter((item) => item.id !== id));
+
     try {
       if (type === "available") {
         await apiClient.selectItem(id);
@@ -196,9 +247,18 @@ export default function Panel({
       }
       onActionSuccess();
     } catch (err: any) {
+      // rollback if selection / unselection fails
+      setItems(oldItems);
+      setNextCursor(oldNextCursor);
+      setHasMore(oldHasMore);
       setError(err.message || `Action failed for ID ${id}`);
     } finally {
       setActionLoadingId(null);
+      setClickedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   }
 
@@ -305,6 +365,17 @@ export default function Panel({
     }
   }
 
+  // Client-side safety filter:
+  // Available list must never render IDs that are selected, pending selection, or known selected.
+  // Selected list must never render IDs that are pending unselection.
+  const visibleItems = items.filter((item) => {
+    if (type === "available") {
+      return !pendingSelectIds.has(item.id) && !knownSelectedIds.has(item.id);
+    } else {
+      return !pendingUnselectIds.has(item.id);
+    }
+  });
+
   return (
     <div
       id={`${idPrefix}-container`}
@@ -342,6 +413,12 @@ export default function Panel({
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400 transition"
           />
+        </div>
+
+        {/* Global batch queue indicator */}
+        <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
+          <RotateCw className="w-3 h-3 text-slate-350 shrink-0" />
+          <span>Selection changes are buffered and saved in 1-second batches.</span>
         </div>
 
         {/* Custom Add Form (Left panel only) */}
@@ -407,12 +484,12 @@ export default function Panel({
         )}
 
         {/* Content Render */}
-        {loading && items.length === 0 ? (
+        {loading && visibleItems.length === 0 && items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
             <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
             <span className="text-xs">Preparing dataset...</span>
           </div>
-        ) : items.length === 0 && pendingAddIds.size === 0 ? (
+        ) : visibleItems.length === 0 && pendingAddIds.size === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-100">
             <p className="text-sm font-medium">No items found</p>
             <p className="text-xs text-slate-400 mt-1">
@@ -436,7 +513,7 @@ export default function Panel({
                     <div className="flex flex-col gap-1.5">
                       {Array.from(pendingAddIds).map((id) => (
                         <div
-                          key={`pending-add-${id}`}
+                           key={`pending-add-${id}`}
                           className="flex items-center justify-between px-3.5 py-2.5 bg-white border border-amber-200/40 rounded-lg shadow-sm animate-pulse"
                         >
                           <div className="flex items-center gap-2">
@@ -455,11 +532,11 @@ export default function Panel({
                   </div>
                 )}
 
-                {items.length > 0 && (
+                {visibleItems.length > 0 && (
                   <div className="divide-y divide-slate-100 border border-slate-50 rounded-xl overflow-hidden bg-slate-50/20">
-                    {items.map((item) => {
+                    {visibleItems.map((item) => {
                       const isPendingSelect = pendingSelectIds.has(item.id);
-                      const isLoading = actionLoadingId === item.id || isPendingSelect;
+                      const isLoading = actionLoadingId === item.id || isPendingSelect || clickedIds.has(item.id);
                       return (
                         <div
                           id={`${idPrefix}-item-row-${item.id}`}
@@ -496,7 +573,7 @@ export default function Panel({
               </div>
             ) : (
               <div className="space-y-3">
-                {items.length > 0 && (
+                {visibleItems.length > 0 && (
                   <div
                     id={`${idPrefix}-drag-hint`}
                     className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-100 rounded-xl"
@@ -529,11 +606,11 @@ export default function Panel({
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext
-                    items={items.map((item) => item.id)}
+                    items={visibleItems.map((item) => item.id)}
                     strategy={verticalListSortingStrategy}
                   >
                     <div className="flex flex-col gap-1 rounded-xl overflow-hidden bg-slate-50/30 p-1">
-                      {items.map((item) => (
+                      {visibleItems.map((item) => (
                         <SortableItemRow
                           key={item.id}
                           item={item}
@@ -568,7 +645,7 @@ export default function Panel({
 
       {/* Footer statistics bar */}
       <div className="p-3.5 bg-slate-50 border-t border-slate-100 text-right text-[11px] font-mono text-slate-400">
-        Loaded: {items.length} items
+        Loaded: {visibleItems.length} items
       </div>
     </div>
   );

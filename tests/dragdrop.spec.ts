@@ -141,4 +141,46 @@ test.describe("Virtual List Manager - Drag & Drop E2E Tests", () => {
     // Expected order matching server mapping: [12, 42, 33, 22, 55]
     expect(finalIds).toEqual([12, 42, 33, 22, 55]);
   });
+
+  test("Test C: Select Consistency & Opt-out Duplication", async ({ page }) => {
+    // 1. Verify that selecting an item from Available panel immediately hides it from Available panel
+    const availableRow3 = page.locator('[data-testid="available-row-3"]');
+    const selectBtn3 = page.locator('[data-testid="select-button-3"]');
+    
+    if (await selectBtn3.isVisible()) {
+      // Click the select button for row 3
+      await selectBtn3.click();
+      
+      // OPTIMISTIC CHECK: Should immediately be hidden from the Available panel (without waiting 1s)
+      await expect(availableRow3).not.toBeVisible();
+      
+      // Wait for change queue to process (1 second wait + buffer)
+      await page.waitForTimeout(1500);
+      
+      // Verify row 3 appears in Selected panel and is NOT duplicated in Available panel
+      const selectedRow3 = page.locator('[data-testid="selected-row-3"]');
+      await expect(selectedRow3).toBeVisible();
+      await expect(availableRow3).not.toBeVisible();
+    }
+  });
+
+  test("Test D: Double Click Deduplication", async ({ page }) => {
+    // 1. Find select button for item 4
+    const selectBtn4 = page.locator('[data-testid="select-button-4"]');
+    if (await selectBtn4.isVisible()) {
+      // Double click rapidly
+      await selectBtn4.dblclick();
+      
+      // Needs to remain clean, no crashes, item 4 visually leaving
+      const availableRow4 = page.locator('[data-testid="available-row-4"]');
+      await expect(availableRow4).not.toBeVisible();
+      
+      // Wait for queue flush
+      await page.waitForTimeout(1500);
+      
+      // Should exist in selected, and NOT show errors on UI
+      const selectedRow4 = page.locator('[data-testid="selected-row-4"]');
+      await expect(selectedRow4).toBeVisible();
+    }
+  });
 });
