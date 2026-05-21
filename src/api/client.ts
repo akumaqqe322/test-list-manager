@@ -23,7 +23,11 @@ export const apiClient = {
   /**
    * Fetches paginated list of available items.
    */
-  async fetchAvailable(search: string = "", cursor: number | null = null, limit: number = 20): Promise<PaginatedResponse> {
+  async fetchAvailable(
+    search: string = "",
+    cursor: number | null = null,
+    limit: number = 20
+  ): Promise<PaginatedResponse> {
     const params = new URLSearchParams();
     if (search) params.append("search", search);
     if (cursor !== null && cursor > 0) params.append("cursor", String(cursor));
@@ -36,7 +40,11 @@ export const apiClient = {
   /**
    * Fetches paginated list of selected items.
    */
-  async fetchSelected(search: string = "", cursor: number | null = null, limit: number = 20): Promise<PaginatedResponse> {
+  async fetchSelected(
+    search: string = "",
+    cursor: number | null = null,
+    limit: number = 20
+  ): Promise<PaginatedResponse> {
     const params = new URLSearchParams();
     if (search) params.append("search", search);
     if (cursor !== null && cursor > 0) params.append("cursor", String(cursor));
@@ -85,7 +93,10 @@ export const apiClient = {
   /**
    * Reorders visible elements in selected list under search filter.
    */
-  async reorderSelectedItems(orderedVisibleIds: number[], search: string): Promise<{ success: boolean }> {
+  async reorderSelectedItems(
+    orderedVisibleIds: number[],
+    search: string
+  ): Promise<{ success: boolean }> {
     const response = await fetch("/api/items/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

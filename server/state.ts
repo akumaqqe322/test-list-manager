@@ -19,11 +19,7 @@ export const MAX_BASE_ID = 1000000;
  * Validates whether an ID is a positive safe integer.
  */
 export function isValidId(id: any): id is number {
-  return (
-    typeof id === "number" &&
-    Number.isSafeInteger(id) &&
-    id > 0
-  );
+  return typeof id === "number" && Number.isSafeInteger(id) && id > 0;
 }
 
 /**
@@ -38,7 +34,7 @@ export function itemExists(id: number): boolean {
 
 /**
  * Query available items with filtering and pagination.
- * 
+ *
  * Available items = (Base virtual range + manually added custom IDs) - Selected IDs
  */
 export interface PaginatedResult {
@@ -54,17 +50,18 @@ export function getAvailableItems(
 ): PaginatedResult {
   const limitVal = Math.min(limit, 20);
   const results: { id: number }[] = [];
-  
+
   // Clean search input, normalize to lowercase
   const searchStr = search.trim();
   const hasSearch = searchStr.length > 0;
-  
-  // Quick pre-check optimization: 
+
+  // Quick pre-check optimization:
   // If search is not numeric, no virtual ID (1..1,000,000) can ever match.
   // Also, any search string of length > 7 cannot match any virtual ID.
   // And a 7-digit search string only matches if it's "1000000".
   const isSearchNumeric = !hasSearch || /^\d+$/.test(searchStr);
-  const canVirtualMatch = isSearchNumeric && 
+  const canVirtualMatch =
+    isSearchNumeric &&
     (searchStr.length < 7 || (searchStr.length === 7 && searchStr === "1000000"));
 
   // Start scanning elements from cursor + 1
@@ -72,9 +69,9 @@ export function getAvailableItems(
 
   // Cache sorted custom IDs that are greater than or equal to currentId and NOT selected
   const customIdsSorted = Array.from(manuallyAddedIds)
-    .filter(id => id >= currentId && !selectedIds.has(id))
+    .filter((id) => id >= currentId && !selectedIds.has(id))
     .sort((a, b) => a - b);
-  
+
   let customIdx = 0;
   let virtualId: number | null = canVirtualMatch && currentId <= MAX_BASE_ID ? currentId : null;
 
@@ -141,7 +138,8 @@ export function getAvailableItems(
 
   const hasMore = results.length > limitVal;
   const slicedItems = hasMore ? results.slice(0, limitVal) : results;
-  const nextCursor = slicedItems.length > 0 && hasMore ? slicedItems[slicedItems.length - 1].id : null;
+  const nextCursor =
+    slicedItems.length > 0 && hasMore ? slicedItems[slicedItems.length - 1].id : null;
 
   return {
     items: slicedItems,
@@ -163,7 +161,7 @@ export function getSelectedItems(
   const hasSearch = searchStr.length > 0;
 
   // 1. Filter the selectedOrder array by search criteria
-  const filteredSelected = selectedOrder.filter(id => {
+  const filteredSelected = selectedOrder.filter((id) => {
     if (hasSearch) {
       return String(id).indexOf(searchStr) !== -1;
     }
@@ -180,10 +178,11 @@ export function getSelectedItems(
   }
 
   const endSlice = startIndex + limitVal;
-  const slicedItems = filteredSelected.slice(startIndex, endSlice).map(id => ({ id }));
-  
+  const slicedItems = filteredSelected.slice(startIndex, endSlice).map((id) => ({ id }));
+
   const hasMore = filteredSelected.length > endSlice;
-  const nextCursor = slicedItems.length > 0 && hasMore ? slicedItems[slicedItems.length - 1].id : null;
+  const nextCursor =
+    slicedItems.length > 0 && hasMore ? slicedItems[slicedItems.length - 1].id : null;
 
   return {
     items: slicedItems,
@@ -212,7 +211,7 @@ export function selectItem(id: number): void {
  */
 export function unselectItem(id: number): void {
   selectedIds.delete(id);
-  selectedOrder = selectedOrder.filter(item => item !== id);
+  selectedOrder = selectedOrder.filter((item) => item !== id);
 }
 
 /**
@@ -220,7 +219,7 @@ export function unselectItem(id: number): void {
  */
 export function updateSelectedOrder(newOrder: number[]): void {
   selectedOrder = [...newOrder];
-  
+
   // Re-sync selectedIds Set
   selectedIds.clear();
   for (const id of selectedOrder) {
@@ -234,13 +233,12 @@ export function updateSelectedOrder(newOrder: number[]): void {
  */
 export function reorderSelectedVisible(orderedVisibleIds: number[], search: string): void {
   const searchStr = search.trim();
-  const hasSearch = searchStr.length > 0;
-  
+
   // Create a set of IDs to reorder (the ones supplied from the front-end)
   const toReorderSet = new Set(orderedVisibleIds);
 
   let replacementIdx = 0;
-  const newOrder = selectedOrder.map(id => {
+  const newOrder = selectedOrder.map((id) => {
     if (toReorderSet.has(id)) {
       const replacement = orderedVisibleIds[replacementIdx];
       replacementIdx++;
@@ -249,9 +247,29 @@ export function reorderSelectedVisible(orderedVisibleIds: number[], search: stri
     return id;
   });
 
+  // Defensive checks before committing
+  const originalLength = selectedOrder.length;
+  if (newOrder.length !== originalLength) {
+    throw new Error(
+      `Inconsistent order length: expected ${originalLength}, got ${newOrder.length}`
+    );
+  }
+
+  const uniqueSet = new Set(newOrder);
+  if (uniqueSet.size !== originalLength) {
+    throw new Error("Duplicate IDs detected in the reconstructed Selected Order");
+  }
+
+  // Verify that all IDs in both sets match
+  for (const id of selectedOrder) {
+    if (!uniqueSet.has(id)) {
+      throw new Error(`State mismatch: rebuilt order is missing item ID ${id}`);
+    }
+  }
+
   selectedOrder = newOrder;
-  
-  // Re-sync selectedIds Set just in case
+
+  // Re-sync selectedIds Set
   selectedIds.clear();
   for (const id of selectedOrder) {
     selectedIds.add(id);

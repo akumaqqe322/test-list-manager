@@ -18,14 +18,9 @@ export function SortableItemRow({
   onAction,
   actionLoadingId,
 }: SortableItemRowProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -40,8 +35,8 @@ export function SortableItemRow({
       style={style}
       id={`${idPrefix}-sortable-row-${item.id}`}
       className={`flex items-center justify-between p-3.5 transition bg-white border rounded-lg ${
-        isDragging 
-          ? "border-slate-300 scale-[1.02] bg-slate-50/80 shadow-md" 
+        isDragging
+          ? "border-slate-300 scale-[1.02] bg-slate-50/80 shadow-md"
           : "border-transparent hover:bg-slate-50/80"
       }`}
     >

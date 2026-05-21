@@ -221,28 +221,32 @@ export default function Panel({
     if (!over || active.id === over.id) return;
 
     const oldItems = [...items];
+    const oldNextCursor = nextCursor;
+
+    const oldIdx = oldItems.findIndex((i) => i.id === active.id);
+    const newIdx = oldItems.findIndex((i) => i.id === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
 
     // Optimistically update list order locally
-    setItems((prev) => {
-      const oldIndex = prev.findIndex((item) => item.id === active.id);
-      const newIndex = prev.findIndex((item) => item.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
+    const reorderedItems = arrayMove(oldItems, oldIdx, newIdx);
+    setItems(reorderedItems);
+
+    // Update nextCursor optimistically based on the reordered local list
+    if (hasMore && reorderedItems.length > 0) {
+      const lastItem = reorderedItems[reorderedItems.length - 1];
+      setNextCursor(lastItem.id);
+    } else {
+      setNextCursor(null);
+    }
 
     try {
-      const oldIdx = oldItems.findIndex(i => i.id === active.id);
-      const newIdx = oldItems.findIndex(i => i.id === over.id);
-      if (oldIdx !== -1 && newIdx !== -1) {
-        const reorderedSlice = arrayMove(oldItems, oldIdx, newIdx);
-        const orderedVisibleIds = reorderedSlice.map((item) => item.id);
-        
-        await apiClient.reorderSelectedItems(orderedVisibleIds, debouncedSearch);
-        // Note: we don't trigger a full parent reset to avoid pagination reset, preserving
-        // any unloaded item orders cleanly on the server & client side.
-      }
+      const orderedVisibleIds = reorderedItems.map((item) => item.id);
+      await apiClient.reorderSelectedItems(orderedVisibleIds, debouncedSearch);
+      // Note: we don't trigger a full parent reset to avoid pagination reset, preserving
+      // any unloaded item orders cleanly on the server & client side.
     } catch (err: any) {
       setItems(oldItems);
+      setNextCursor(oldNextCursor);
       setError(err.message || "Failed to save order");
     }
   }
@@ -255,7 +259,10 @@ export default function Panel({
       {/* Panel Header */}
       <div id={`${idPrefix}-header`} className="p-5 border-b border-slate-100 bg-slate-50/50">
         <div className="flex items-center justify-between mb-3">
-          <h2 id={`${idPrefix}-title`} className="text-lg font-semibold font-sans text-slate-800 tracking-tight">
+          <h2
+            id={`${idPrefix}-title`}
+            className="text-lg font-semibold font-sans text-slate-800 tracking-tight"
+          >
             {title}
           </h2>
           <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-full bg-slate-200/60 text-slate-600">
@@ -332,7 +339,10 @@ export default function Panel({
       >
         {/* API Error Notification */}
         {error && (
-          <div id={`${idPrefix}-error-alert`} className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600">
+          <div
+            id={`${idPrefix}-error-alert`}
+            className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600"
+          >
             {error}
           </div>
         )}
