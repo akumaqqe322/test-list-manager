@@ -25,10 +25,14 @@ export function SortableItemRow({
   });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
     opacity: isDragging ? 0.6 : isPending ? 0.5 : 1,
-    boxShadow: isDragging ? "0 8px 16px -2px rgba(0,0,0,0.1)" : "none",
+    boxShadow: isDragging
+      ? "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)"
+      : "none",
+    zIndex: isDragging ? 50 : undefined,
+    position: "relative" as const,
   };
 
   const isLoading = actionLoadingId === item.id || isPending;
@@ -46,14 +50,19 @@ export function SortableItemRow({
     >
       <div className="flex items-center gap-2.5">
         {/* Isolated Drag Handle */}
-        <div
+        <button
           {...attributes}
           {...listeners}
-          className="p-1 hover:bg-slate-100 rounded cursor-grab active:cursor-grabbing text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+          type="button"
+          aria-label={`Drag item ${item.id}`}
+          className="p-1.5 px-2.5 hover:bg-slate-100 border border-slate-100 hover:border-slate-200 rounded cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 flex items-center gap-1.5 transition-all"
           title="Drag handle to reorder"
         >
-          <GripVertical className="w-4 h-4" />
-        </div>
+          <GripVertical className="w-4 h-4 text-slate-400 shrink-0" />
+          <span className="text-[10px] text-slate-500 font-medium select-none pointer-events-none hidden sm:inline">
+            Drag to reorder
+          </span>
+        </button>
         <span className="text-xs font-semibold text-slate-300">#</span>
         <span className="text-sm font-mono font-medium text-slate-800">
           {item.id.toLocaleString()}

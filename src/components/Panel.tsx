@@ -53,6 +53,7 @@ export default function Panel({
   const [pendingAddIds, setPendingAddIds] = useState<Set<number>>(new Set());
   const [pendingSelectIds, setPendingSelectIds] = useState<Set<number>>(new Set());
   const [pendingUnselectIds, setPendingUnselectIds] = useState<Set<number>>(new Set());
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
 
   useEffect(() => {
     function updateQueueState() {
@@ -231,13 +232,33 @@ export default function Panel({
 
   // Set up DnD sensors
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
+  function handleDragStart(event: { active: { id: any } }) {
+    const id = Number(event.active.id);
+    setActiveDragId(id);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("Started dragging item ID:", id);
+    }
+  }
+
+  function handleDragCancel() {
+    setActiveDragId(null);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("Dragging operation canceled");
+    }
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
+    setActiveDragId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -457,29 +478,58 @@ export default function Panel({
                 )}
               </div>
             ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={items.map((item) => item.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="flex flex-col gap-1 rounded-xl overflow-hidden bg-slate-50/30 p-1">
-                    {items.map((item) => (
-                      <SortableItemRow
-                        key={item.id}
-                        item={item}
-                        idPrefix={idPrefix}
-                        onAction={handleToggleAction}
-                        actionLoadingId={actionLoadingId}
-                        isPending={pendingUnselectIds.has(item.id)}
-                      />
-                    ))}
+              <div className="space-y-3">
+                {items.length > 0 && (
+                  <div
+                    id={`${idPrefix}-drag-hint`}
+                    className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-100 rounded-xl"
+                  >
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-slate-200/80 text-slate-700 font-bold text-[10px] shrink-0">
+                      i
+                    </span>
+                    <span className="text-xs text-slate-500 font-medium">
+                      Drag selected rows by the handle to reorder them.
+                    </span>
                   </div>
-                </SortableContext>
-              </DndContext>
+                )}
+
+                {activeDragId !== null && (
+                  <div
+                    id={`${idPrefix}-drag-active-indicator`}
+                    className="text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg animate-pulse"
+                  >
+                    <p className="text-[10px] font-mono font-medium text-slate-600">
+                      Dragging Item #{activeDragId}
+                    </p>
+                  </div>
+                )}
+
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleDragStart}
+                  onDragCancel={handleDragCancel}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={items.map((item) => item.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="flex flex-col gap-1 rounded-xl overflow-hidden bg-slate-50/30 p-1">
+                      {items.map((item) => (
+                        <SortableItemRow
+                          key={item.id}
+                          item={item}
+                          idPrefix={idPrefix}
+                          onAction={handleToggleAction}
+                          actionLoadingId={actionLoadingId}
+                          isPending={pendingUnselectIds.has(item.id)}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              </div>
             )}
 
             {/* Sentinel element to trigger background infinite scroll load */}
