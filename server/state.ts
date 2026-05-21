@@ -262,10 +262,10 @@ export interface BatchAddResult {
   success: boolean;
   addedIds: number[];
   skippedIds: number[];
-  errors: { id: any; reason: string }[];
+  errors: { id: unknown; reason: string }[];
 }
 
-export function addCustomIdsBatch(ids: any[]): BatchAddResult {
+export function addCustomIdsBatch(ids: unknown[]): BatchAddResult {
   const result: BatchAddResult = { success: true, addedIds: [], skippedIds: [], errors: [] };
   const inputSet = new Set(ids);
   for (const rawId of inputSet) {
@@ -273,7 +273,7 @@ export function addCustomIdsBatch(ids: any[]): BatchAddResult {
       result.errors.push({ id: rawId, reason: "ID must be a positive safe integer" });
       continue;
     }
-    const id = rawId;
+    const id = rawId as number;
     if (itemExists(id)) {
       result.skippedIds.push(id);
     } else {
@@ -288,10 +288,10 @@ export interface BatchSelectResult {
   success: boolean;
   selectedIds: number[];
   skippedIds: number[];
-  errors: { id: any; reason: string }[];
+  errors: { id: unknown; reason: string }[];
 }
 
-export function selectItemsBatch(ids: any[]): BatchSelectResult {
+export function selectItemsBatch(ids: unknown[]): BatchSelectResult {
   const result: BatchSelectResult = { success: true, selectedIds: [], skippedIds: [], errors: [] };
   const inputSet = new Set(ids);
   for (const rawId of inputSet) {
@@ -299,7 +299,7 @@ export function selectItemsBatch(ids: any[]): BatchSelectResult {
       result.errors.push({ id: rawId, reason: "ID must be a positive safe integer" });
       continue;
     }
-    const id = rawId;
+    const id = rawId as number;
     if (!itemExists(id)) {
       result.errors.push({ id, reason: `ID ${id} does not exist in the system` });
     } else if (selectedIds.has(id)) {
@@ -317,10 +317,10 @@ export interface BatchUnselectResult {
   success: boolean;
   unselectedIds: number[];
   skippedIds: number[];
-  errors: { id: any; reason: string }[];
+  errors: { id: unknown; reason: string }[];
 }
 
-export function unselectItemsBatch(ids: any[]): BatchUnselectResult {
+export function unselectItemsBatch(ids: unknown[]): BatchUnselectResult {
   const result: BatchUnselectResult = {
     success: true,
     unselectedIds: [],
@@ -333,7 +333,7 @@ export function unselectItemsBatch(ids: any[]): BatchUnselectResult {
       result.errors.push({ id: rawId, reason: "ID must be a positive safe integer" });
       continue;
     }
-    const id = rawId;
+    const id = rawId as number;
     if (!selectedIds.has(id)) {
       result.skippedIds.push(id);
     } else {

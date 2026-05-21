@@ -1,5 +1,12 @@
-import { directClient } from "./client";
+import { directClient } from "./directClient";
 import { PaginatedResponse } from "../types";
+
+export class AbortError extends Error {
+  override name = "AbortError";
+  constructor(message: string) {
+    super(message);
+  }
+}
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -17,53 +24,66 @@ function notifyQueue() {
   }
 }
 
-// State of holding pending IDs for UI to bind to
+// Visual State Tracking
 const pendingAddIds = new Set<number>();
+const inFlightAddIds = new Set<number>();
+
 const pendingSelectIds = new Set<number>();
+const inFlightSelectIds = new Set<number>();
+
 const pendingUnselectIds = new Set<number>();
+const inFlightUnselectIds = new Set<number>();
 
 export function getPendingAddIds(): Set<number> {
-  return pendingAddIds;
+  return new Set([...Array.from(pendingAddIds), ...Array.from(inFlightAddIds)]);
 }
 
 export function getPendingSelectIds(): Set<number> {
-  return pendingSelectIds;
+  return new Set([...Array.from(pendingSelectIds), ...Array.from(inFlightSelectIds)]);
 }
 
 export function getPendingUnselectIds(): Set<number> {
-  return pendingUnselectIds;
+  return new Set([...Array.from(pendingUnselectIds), ...Array.from(inFlightUnselectIds)]);
+}
+
+interface Settler<T> {
+  resolve: (value: T) => void;
+  reject: (reason: any) => void;
 }
 
 // 1. ADD QUEUE
-interface AddRequest {
-  id: number;
-  resolve: (value: { success: boolean; addedId: number }) => void;
-  reject: (reason: any) => void;
-}
-let pendingAddRequests: AddRequest[] = [];
+const pendingAddPromises = new Map<number, Promise<{ success: boolean; addedId: number }>>();
+const inFlightAddPromises = new Map<number, Promise<{ success: boolean; addedId: number }>>();
+const pendingAddSettlers = new Map<number, Settler<{ success: boolean; addedId: number }>>();
+const inFlightAddSettlers = new Map<number, Settler<{ success: boolean; addedId: number }>>();
+
 let addTimeout: NodeJS.Timeout | null = null;
 
 function flushAddQueue() {
   addTimeout = null;
-  if (pendingAddRequests.length === 0) return;
+  if (pendingAddIds.size === 0) return;
 
-  const currentBatch = pendingAddRequests;
-  pendingAddRequests = [];
+  const idsToFlush = Array.from(pendingAddIds);
+  const settlersSnapshot = new Map(pendingAddSettlers);
+  const promisesSnapshot = new Map(pendingAddPromises);
 
-  // Deduplicate and gather IDs for request
-  const uniqueIdsSet = new Set(currentBatch.map((req) => req.id));
-  const idsArray = Array.from(uniqueIdsSet);
+  pendingAddIds.clear();
+  pendingAddSettlers.clear();
+  pendingAddPromises.clear();
 
-  // Remove flushed IDs from the pending visual state
-  for (const id of idsArray) {
-    pendingAddIds.delete(id);
+  // Mark as in-flight
+  for (const id of idsToFlush) {
+    inFlightAddIds.add(id);
+    const settler = settlersSnapshot.get(id);
+    const prom = promisesSnapshot.get(id);
+    if (settler) inFlightAddSettlers.set(id, settler);
+    if (prom) inFlightAddPromises.set(id, prom);
   }
   notifyQueue();
 
   directClient
-    .addCustomIdsBatch(idsArray)
+    .addCustomIdsBatch(idsToFlush)
     .then((res) => {
-      // Map results back to resolves/rejects
       const errorsMap = new Map<number, string>();
       for (const err of res.errors) {
         errorsMap.set(Number(err.id), err.reason);
@@ -72,35 +92,57 @@ function flushAddQueue() {
       const skippedSet = new Set(res.skippedIds);
       const addedSet = new Set(res.addedIds);
 
-      for (const req of currentBatch) {
-        const errorReason = errorsMap.get(req.id);
-        if (errorReason) {
-          req.reject(new Error(errorReason));
-        } else if (addedSet.has(req.id) || skippedSet.has(req.id)) {
-          req.resolve({ success: true, addedId: req.id });
-        } else {
-          req.resolve({ success: true, addedId: req.id });
+      for (const id of idsToFlush) {
+        const errorReason = errorsMap.get(id);
+        const settler = inFlightAddSettlers.get(id);
+        if (settler) {
+          if (errorReason) {
+            settler.reject(new Error(errorReason));
+          } else {
+            settler.resolve({ success: true, addedId: id });
+          }
         }
       }
     })
     .catch((err) => {
-      for (const req of currentBatch) {
-        req.reject(err);
+      for (const id of idsToFlush) {
+        const settler = inFlightAddSettlers.get(id);
+        if (settler) settler.reject(err);
       }
+    })
+    .finally(() => {
+      for (const id of idsToFlush) {
+        inFlightAddIds.delete(id);
+        inFlightAddSettlers.delete(id);
+        inFlightAddPromises.delete(id);
+      }
+      notifyQueue();
     });
 }
 
 // 2. CHANGE QUEUE (Select, Unselect, Reorder)
-interface SelectRequest {
-  id: number;
-  resolve: (value: { success: boolean; selectedId: number }) => void;
-  reject: (reason: any) => void;
-}
-interface UnselectRequest {
-  id: number;
-  resolve: (value: { success: boolean; unselectedId: number }) => void;
-  reject: (reason: any) => void;
-}
+const pendingSelectPromises = new Map<number, Promise<{ success: boolean; selectedId: number }>>();
+const inFlightSelectPromises = new Map<number, Promise<{ success: boolean; selectedId: number }>>();
+const pendingSelectSettlers = new Map<number, Settler<{ success: boolean; selectedId: number }>>();
+const inFlightSelectSettlers = new Map<number, Settler<{ success: boolean; selectedId: number }>>();
+
+const pendingUnselectPromises = new Map<
+  number,
+  Promise<{ success: boolean; unselectedId: number }>
+>();
+const inFlightUnselectPromises = new Map<
+  number,
+  Promise<{ success: boolean; unselectedId: number }>
+>();
+const pendingUnselectSettlers = new Map<
+  number,
+  Settler<{ success: boolean; unselectedId: number }>
+>();
+const inFlightUnselectSettlers = new Map<
+  number,
+  Settler<{ success: boolean; unselectedId: number }>
+>();
+
 interface ReorderRequest {
   orderedVisibleIds: number[];
   search: string;
@@ -108,133 +150,196 @@ interface ReorderRequest {
   reject: (reason: any) => void;
 }
 
-let pendingSelectRequests: SelectRequest[] = [];
-let pendingUnselectRequests: UnselectRequest[] = [];
-let pendingReorderRequests: Map<string, ReorderRequest> = new Map(); // search -> ReorderRequest
+const pendingReorderRequests = new Map<string, ReorderRequest>(); // search -> ReorderRequest
 let changeTimeout: NodeJS.Timeout | null = null;
 
-function flushChangeQueue() {
+async function flushChangeQueue() {
   changeTimeout = null;
-  const selects = pendingSelectRequests;
-  const unselects = pendingUnselectRequests;
-  const reorders = Array.from(pendingReorderRequests.values());
 
-  pendingSelectRequests = [];
-  pendingUnselectRequests = [];
+  // Snapshot selects to flush
+  const selectsToFlush = Array.from(pendingSelectIds);
+  const selectSettlersSnapshot = new Map(pendingSelectSettlers);
+  const selectPromisesSnapshot = new Map(pendingSelectPromises);
+
+  pendingSelectIds.clear();
+  pendingSelectSettlers.clear();
+  pendingSelectPromises.clear();
+
+  for (const id of selectsToFlush) {
+    inFlightSelectIds.add(id);
+    const settler = selectSettlersSnapshot.get(id);
+    const prom = selectPromisesSnapshot.get(id);
+    if (settler) inFlightSelectSettlers.set(id, settler);
+    if (prom) inFlightSelectPromises.set(id, prom);
+  }
+
+  // Snapshot unselects to flush
+  const unselectsToFlush = Array.from(pendingUnselectIds);
+  const unselectSettlersSnapshot = new Map(pendingUnselectSettlers);
+  const unselectPromisesSnapshot = new Map(pendingUnselectPromises);
+
+  pendingUnselectIds.clear();
+  pendingUnselectSettlers.clear();
+  pendingUnselectPromises.clear();
+
+  for (const id of unselectsToFlush) {
+    inFlightUnselectIds.add(id);
+    const settler = unselectSettlersSnapshot.get(id);
+    const prom = unselectPromisesSnapshot.get(id);
+    if (settler) inFlightUnselectSettlers.set(id, settler);
+    if (prom) inFlightUnselectPromises.set(id, prom);
+  }
+
+  // Snapshot reorders to flush
+  const reordersToFlush = Array.from(pendingReorderRequests.entries());
   pendingReorderRequests.clear();
 
-  // Clear pending sets
-  for (const s of selects) pendingSelectIds.delete(s.id);
-  for (const u of unselects) pendingUnselectIds.delete(u.id);
   notifyQueue();
 
-  // 2a. Flush Selects
-  if (selects.length > 0) {
-    const ids = Array.from(new Set(selects.map((s) => s.id)));
-    directClient
-      .selectItemsBatch(ids)
-      .then((res) => {
-        const errorsMap = new Map<number, string>();
-        for (const err of res.errors) {
-          errorsMap.set(Number(err.id), err.reason);
+  // DETERMINISTIC SEQUENCE:
+  // 1. select-batch
+  if (selectsToFlush.length > 0) {
+    try {
+      const res = await directClient.selectItemsBatch(selectsToFlush);
+      const errorsMap = new Map<number, string>();
+      for (const err of res.errors) {
+        errorsMap.set(Number(err.id), err.reason);
+      }
+      for (const id of selectsToFlush) {
+        const errMsg = errorsMap.get(id);
+        const settler = inFlightSelectSettlers.get(id);
+        if (settler) {
+          if (errMsg) {
+            settler.reject(new Error(errMsg));
+          } else {
+            settler.resolve({ success: true, selectedId: id });
+          }
         }
-        for (const s of selects) {
-          const errMsg = errorsMap.get(s.id);
-          if (errMsg) s.reject(new Error(errMsg));
-          else s.resolve({ success: true, selectedId: s.id });
-        }
-      })
-      .catch((err) => {
-        for (const s of selects) s.reject(err);
-      });
+      }
+    } catch (err: any) {
+      for (const id of selectsToFlush) {
+        const settler = inFlightSelectSettlers.get(id);
+        if (settler) settler.reject(err);
+      }
+    } finally {
+      for (const id of selectsToFlush) {
+        inFlightSelectIds.delete(id);
+        inFlightSelectSettlers.delete(id);
+        inFlightSelectPromises.delete(id);
+      }
+      notifyQueue();
+    }
   }
 
-  // 2b. Flush Unselects
-  if (unselects.length > 0) {
-    const ids = Array.from(new Set(unselects.map((u) => u.id)));
-    directClient
-      .unselectItemsBatch(ids)
-      .then((res) => {
-        const errorsMap = new Map<number, string>();
-        for (const err of res.errors) {
-          errorsMap.set(Number(err.id), err.reason);
+  // 2. unselect-batch
+  if (unselectsToFlush.length > 0) {
+    try {
+      const res = await directClient.unselectItemsBatch(unselectsToFlush);
+      const errorsMap = new Map<number, string>();
+      for (const err of res.errors) {
+        errorsMap.set(Number(err.id), err.reason);
+      }
+      for (const id of unselectsToFlush) {
+        const errMsg = errorsMap.get(id);
+        const settler = inFlightUnselectSettlers.get(id);
+        if (settler) {
+          if (errMsg) {
+            settler.reject(new Error(errMsg));
+          } else {
+            settler.resolve({ success: true, unselectedId: id });
+          }
         }
-        for (const u of unselects) {
-          const errMsg = errorsMap.get(u.id);
-          if (errMsg) u.reject(new Error(errMsg));
-          else u.resolve({ success: true, unselectedId: u.id });
-        }
-      })
-      .catch((err) => {
-        for (const u of unselects) u.reject(err);
-      });
+      }
+    } catch (err: any) {
+      for (const id of unselectsToFlush) {
+        const settler = inFlightUnselectSettlers.get(id);
+        if (settler) settler.reject(err);
+      }
+    } finally {
+      for (const id of unselectsToFlush) {
+        inFlightUnselectIds.delete(id);
+        inFlightUnselectSettlers.delete(id);
+        inFlightUnselectPromises.delete(id);
+      }
+      notifyQueue();
+    }
   }
 
-  // 2c. Flush Reorders
-  for (const r of reorders) {
-    directClient
-      .reorderSelectedItems(r.orderedVisibleIds, r.search)
-      .then((res) => r.resolve(res))
-      .catch((err) => r.reject(err));
+  // 3. reorder
+  if (reordersToFlush.length > 0) {
+    for (const [_, req] of reordersToFlush) {
+      try {
+        const res = await directClient.reorderSelectedItems(req.orderedVisibleIds, req.search);
+        req.resolve(res);
+      } catch (err: any) {
+        req.reject(err);
+      }
+    }
   }
 }
 
-// 3. READ QUEUE (Cache & Deduplication for Reads with 1s window)
-interface ReadRequest {
+// 3. READ QUEUE
+interface ReadMeta {
   type: "available" | "selected";
   search: string;
   cursor: number | null;
   limit: number;
-  resolve: (value: PaginatedResponse) => void;
-  reject: (reason: any) => void;
 }
-
-const pendingReadRequests = new Map<string, ReadRequest[]>(); // key -> request array
+const pendingReadPromises = new Map<string, Promise<PaginatedResponse>>();
+const pendingReadSettlers = new Map<string, Settler<PaginatedResponse>[]>();
+const pendingReadMeta = new Map<string, ReadMeta>();
 let readTimeout: NodeJS.Timeout | null = null;
 
 function flushReadQueue() {
   readTimeout = null;
-  const currentReads = new Map(pendingReadRequests);
-  pendingReadRequests.clear();
+  const settlersSnapshot = new Map(pendingReadSettlers);
+  const promisesSnapshot = new Map(pendingReadPromises);
+  const metaSnapshot = new Map(pendingReadMeta);
 
-  for (const [key, requests] of Array.from(currentReads.entries())) {
-    if (requests.length === 0) continue;
-    const firstReq = requests[0];
+  pendingReadSettlers.clear();
+  pendingReadPromises.clear();
+  pendingReadMeta.clear();
+
+  for (const [key, settlersList] of Array.from(settlersSnapshot.entries())) {
+    const meta = metaSnapshot.get(key);
+    if (!meta) continue;
 
     const fetchPromise =
-      firstReq.type === "available"
-        ? directClient.fetchAvailable(firstReq.search, firstReq.cursor, firstReq.limit)
-        : directClient.fetchSelected(firstReq.search, firstReq.cursor, firstReq.limit);
+      meta.type === "available"
+        ? directClient.fetchAvailable(meta.search, meta.cursor, meta.limit)
+        : directClient.fetchSelected(meta.search, meta.cursor, meta.limit);
 
     fetchPromise
       .then((data) => {
-        for (const req of requests) {
-          req.resolve(data);
+        for (const s of settlersList) {
+          s.resolve(data);
         }
       })
       .catch((err) => {
-        for (const req of requests) {
-          req.reject(err);
+        for (const s of settlersList) {
+          s.reject(err);
         }
       });
   }
 }
 
-// High level request queue API
 export const requestQueue = {
   addCustomId(id: number): Promise<{ success: boolean; addedId: number }> {
-    if (pendingAddIds.has(id)) {
-      return new Promise((resolve, reject) => {
-        pendingAddRequests.push({ id, resolve, reject });
-      });
+    if (pendingAddPromises.has(id)) {
+      return pendingAddPromises.get(id)!;
+    }
+    if (inFlightAddPromises.has(id)) {
+      return inFlightAddPromises.get(id)!;
     }
 
     pendingAddIds.add(id);
     notifyQueue();
 
     const promise = new Promise<{ success: boolean; addedId: number }>((resolve, reject) => {
-      pendingAddRequests.push({ id, resolve, reject });
+      pendingAddSettlers.set(id, { resolve, reject });
     });
+
+    pendingAddPromises.set(id, promise);
 
     if (!addTimeout) {
       addTimeout = setTimeout(flushAddQueue, 10000);
@@ -243,18 +348,32 @@ export const requestQueue = {
   },
 
   selectItem(id: number): Promise<{ success: boolean; selectedId: number }> {
-    if (pendingSelectIds.has(id)) {
-      return new Promise((resolve, reject) => {
-        pendingSelectRequests.push({ id, resolve, reject });
-      });
+    // Conflict compaction: if ununselect is pending, override it
+    if (pendingUnselectIds.has(id)) {
+      const settler = pendingUnselectSettlers.get(id);
+      if (settler) {
+        settler.resolve({ success: true, unselectedId: id, overridden: true } as any);
+      }
+      pendingUnselectIds.delete(id);
+      pendingUnselectSettlers.delete(id);
+      pendingUnselectPromises.delete(id);
+    }
+
+    if (pendingSelectPromises.has(id)) {
+      return pendingSelectPromises.get(id)!;
+    }
+    if (inFlightSelectPromises.has(id)) {
+      return inFlightSelectPromises.get(id)!;
     }
 
     pendingSelectIds.add(id);
     notifyQueue();
 
     const promise = new Promise<{ success: boolean; selectedId: number }>((resolve, reject) => {
-      pendingSelectRequests.push({ id, resolve, reject });
+      pendingSelectSettlers.set(id, { resolve, reject });
     });
+
+    pendingSelectPromises.set(id, promise);
 
     if (!changeTimeout) {
       changeTimeout = setTimeout(flushChangeQueue, 1000);
@@ -263,18 +382,32 @@ export const requestQueue = {
   },
 
   unselectItem(id: number): Promise<{ success: boolean; unselectedId: number }> {
-    if (pendingUnselectIds.has(id)) {
-      return new Promise((resolve, reject) => {
-        pendingUnselectRequests.push({ id, resolve, reject });
-      });
+    // Conflict compaction: if select is pending, override it
+    if (pendingSelectIds.has(id)) {
+      const settler = pendingSelectSettlers.get(id);
+      if (settler) {
+        settler.resolve({ success: true, selectedId: id, overridden: true } as any);
+      }
+      pendingSelectIds.delete(id);
+      pendingSelectSettlers.delete(id);
+      pendingSelectPromises.delete(id);
+    }
+
+    if (pendingUnselectPromises.has(id)) {
+      return pendingUnselectPromises.get(id)!;
+    }
+    if (inFlightUnselectPromises.has(id)) {
+      return inFlightUnselectPromises.get(id)!;
     }
 
     pendingUnselectIds.add(id);
     notifyQueue();
 
     const promise = new Promise<{ success: boolean; unselectedId: number }>((resolve, reject) => {
-      pendingUnselectRequests.push({ id, resolve, reject });
+      pendingUnselectSettlers.set(id, { resolve, reject });
     });
+
+    pendingUnselectPromises.set(id, promise);
 
     if (!changeTimeout) {
       changeTimeout = setTimeout(flushChangeQueue, 1000);
@@ -283,12 +416,13 @@ export const requestQueue = {
   },
 
   reorderSelectedItems(orderedVisibleIds: number[], search: string): Promise<{ success: boolean }> {
+    const key = search;
+    const existing = pendingReorderRequests.get(key);
+    if (existing) {
+      existing.reject(new AbortError("Reorder request superseded by a newer reorder"));
+    }
+
     const promise = new Promise<{ success: boolean }>((resolve, reject) => {
-      const key = search;
-      const existing = pendingReorderRequests.get(key);
-      if (existing) {
-        existing.resolve({ success: true });
-      }
       pendingReorderRequests.set(key, { orderedVisibleIds, search, resolve, reject });
     });
 
@@ -304,11 +438,18 @@ export const requestQueue = {
     limit: number = 20
   ): Promise<PaginatedResponse> {
     const key = `available-${search}-${cursor || 0}-${limit}`;
+    if (pendingReadPromises.has(key)) {
+      return pendingReadPromises.get(key)!;
+    }
+
     const promise = new Promise<PaginatedResponse>((resolve, reject) => {
-      const list = pendingReadRequests.get(key) || [];
-      list.push({ type: "available", search, cursor, limit, resolve, reject });
-      pendingReadRequests.set(key, list);
+      const settlers = pendingReadSettlers.get(key) || [];
+      settlers.push({ resolve, reject });
+      pendingReadSettlers.set(key, settlers);
     });
+
+    pendingReadPromises.set(key, promise);
+    pendingReadMeta.set(key, { type: "available", search, cursor, limit });
 
     if (!readTimeout) {
       readTimeout = setTimeout(flushReadQueue, 1000);
@@ -322,11 +463,18 @@ export const requestQueue = {
     limit: number = 20
   ): Promise<PaginatedResponse> {
     const key = `selected-${search}-${cursor || 0}-${limit}`;
+    if (pendingReadPromises.has(key)) {
+      return pendingReadPromises.get(key)!;
+    }
+
     const promise = new Promise<PaginatedResponse>((resolve, reject) => {
-      const list = pendingReadRequests.get(key) || [];
-      list.push({ type: "selected", search, cursor, limit, resolve, reject });
-      pendingReadRequests.set(key, list);
+      const settlers = pendingReadSettlers.get(key) || [];
+      settlers.push({ resolve, reject });
+      pendingReadSettlers.set(key, settlers);
     });
+
+    pendingReadPromises.set(key, promise);
+    pendingReadMeta.set(key, { type: "selected", search, cursor, limit });
 
     if (!readTimeout) {
       readTimeout = setTimeout(flushReadQueue, 1000);

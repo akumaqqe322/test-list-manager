@@ -266,6 +266,10 @@ export default function Panel({
       // Note: we don't trigger a full parent reset to avoid pagination reset, preserving
       // any unloaded item orders cleanly on the server & client side.
     } catch (err: any) {
+      if (err.name === "AbortError") {
+        // Ignored: request was superseded by a newer reorder.
+        return;
+      }
       setItems(oldItems);
       setNextCursor(oldNextCursor);
       setError(err.message || "Failed to save order");
