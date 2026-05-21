@@ -72,6 +72,49 @@ export default function App() {
           </div>
         </div>
 
+        {/* Dev Seeder Panel */}
+        {process.env.NODE_ENV !== "production" && (
+          <div
+            id="dev-seeder-box"
+            className="mb-8 p-4 bg-amber-50/70 border border-amber-200/60 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="p-1 px-2 bg-amber-200 text-amber-800 rounded font-mono text-[10px] uppercase font-bold">
+                DEV MODE
+              </span>
+              <div>
+                <dt className="text-xs font-bold text-amber-900 block">
+                  Deterministic Seed Helper
+                </dt>
+                <dd className="text-[11px] text-amber-750 font-medium">
+                  Seeding selected list with{" "}
+                  <strong className="font-semibold text-amber-800">[10, 20, 30, 40, 50]</strong> to
+                  test Drag & Drop.
+                </dd>
+              </div>
+            </div>
+            <button
+              id="dev-seed-btn"
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/items/dev/seed-selected", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ids: [10, 20, 30, 40, 50] }),
+                  });
+                  if (!res.ok) throw new Error(await res.text());
+                  handleActionSuccess();
+                } catch (err: any) {
+                  alert("Failed to seed selected items: " + err.message);
+                }
+              }}
+              className="px-4 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-medium transition cursor-pointer shrink-0"
+            >
+              Seed [10, 20, 30, 40, 50]
+            </button>
+          </div>
+        )}
+
         {/* Dual Panel Grid View */}
         <div
           id="dual-panels-container"

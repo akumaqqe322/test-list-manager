@@ -395,3 +395,25 @@ export function reorderSelectedVisible(orderedVisibleIds: number[], search: stri
 
   assertSelectedStateInvariant();
 }
+
+/**
+ * Seeding helper used only in development/testing mode to set selected state to a specific list of IDs.
+ */
+export function seedSelectedState(ids: number[]): void {
+  selectedOrder = [];
+  selectedIds.clear();
+
+  for (const id of ids) {
+    if (!isValidId(id)) continue;
+
+    // Ensure space for manual IDs beyond the 1..1M range
+    if (id > MAX_BASE_ID) {
+      manuallyAddedIds.add(id);
+    }
+
+    selectedIds.add(id);
+    selectedOrder.push(id);
+  }
+
+  assertSelectedStateInvariant();
+}

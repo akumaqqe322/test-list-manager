@@ -63,3 +63,35 @@ npm start
   - **Deterministic Pipeline Execution**: Processes mutations sequentially (select-batch, unselect-batch, and latest reorders) using an async/await pipeline inside the queue flush callback.
   - **Persistent Visual Pending State**: Retains visual item states as pending on the client-side until the network request completes, and performs robust in-flight deduplication.
   - **In-Memory Backend Invariant Assertions**: Server verifies size alignment and detects duplicates on every batch change.
+
+---
+
+## Drag & Drop Verification Instructions
+
+### 1. Manual Browser Verification Flow
+
+To manually verify the Drag & Drop functionalities:
+
+1. **Start the application** in development mode: `npm run dev`.
+2. **Access the web application** at `http://localhost:3000` (or your assigned browser sandbox URL).
+3. **Seed the starting list**: Under **DEV MODE** (located in the orange-banner at the top of the main area), click the **Seed [10, 20, 30, 40, 50]** button.
+4. Confirm that items `10, 20, 30, 40, 50` are successfully populated in the **Selected Items** panel.
+5. **Drag to Reorder**: Hover over the drag handle (grip icon with text "Drag to reorder") on the item `#50` (the 5th selected item). Grab the handle and drag it upwards above item `#20`.
+6. Confirm that the UI immediately reorders the elements on release and that no duplicate records or state corruptions are displayed.
+7. **Refresh the page**: Confirm that the modified selected state and elements order are perfectly preserved by the backend in-memory registry.
+8. **Filtered Drag & Drop Test**:
+   - In the **Selected Items** panel search input, type `2` (this will filter the list to only display `#12`, `#22`, and `#42` if seeded with custom IDs, or search values matching `#20` and `#50` when using the default set).
+   - Drag one visible filtered item card above another matching visible item card using the handle.
+   - Clear the search filter.
+   - Confirm that the absolute positions of all hidden selected items (e.g., `#33` or other elements not matching the `2` search key) were preserved as expected on both the frontend list and the backend memory registry.
+
+### 2. Automated E2E Testing
+
+To run the automated E2E tests:
+
+1. Make sure the development server is actively running on port 3000 (`npm run dev`).
+2. Run the Playwright test script:
+   ```bash
+   npx playwright test
+   ```
+   _(Note: Browser binary installation can be initialized if needed via `npx playwright install`)_

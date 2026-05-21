@@ -300,6 +300,7 @@ export default function Panel({
   return (
     <div
       id={`${idPrefix}-container`}
+      data-testid={`${type}-panel`}
       className="flex flex-col h-full bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
     >
       {/* Panel Header */}
@@ -321,6 +322,7 @@ export default function Panel({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             id={`${idPrefix}-search-input`}
+            data-testid={`${type}-search-input`}
             type="text"
             placeholder="Search by ID..."
             value={search}
@@ -448,6 +450,7 @@ export default function Panel({
                       return (
                         <div
                           id={`${idPrefix}-item-row-${item.id}`}
+                          data-testid={`available-row-${item.id}`}
                           key={item.id}
                           className="flex items-center justify-between p-3.5 hover:bg-slate-50/80 transition-colors bg-white"
                         >
@@ -460,6 +463,7 @@ export default function Panel({
 
                           <button
                             id={`${idPrefix}-item-action-${item.id}`}
+                            data-testid={`select-button-${item.id}`}
                             onClick={() => handleToggleAction(item.id)}
                             disabled={isLoading}
                             className="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-700 disabled:opacity-50"

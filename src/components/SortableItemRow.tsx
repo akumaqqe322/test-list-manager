@@ -42,6 +42,7 @@ export function SortableItemRow({
       ref={setNodeRef}
       style={style}
       id={`${idPrefix}-sortable-row-${item.id}`}
+      data-testid={`selected-row-${item.id}`}
       className={`flex items-center justify-between p-3.5 transition bg-white border rounded-lg ${
         isDragging
           ? "border-slate-300 scale-[1.02] bg-slate-50/80 shadow-md"
@@ -55,6 +56,7 @@ export function SortableItemRow({
           {...listeners}
           type="button"
           aria-label={`Drag item ${item.id}`}
+          data-testid={`drag-handle-${item.id}`}
           className="p-1.5 px-2.5 hover:bg-slate-100 border border-slate-100 hover:border-slate-200 rounded cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 flex items-center gap-1.5 transition-all"
           title="Drag handle to reorder"
         >
@@ -71,6 +73,7 @@ export function SortableItemRow({
 
       <button
         id={`${idPrefix}-item-action-${item.id}`}
+        data-testid={`unselect-button-${item.id}`}
         onClick={() => onAction(item.id)}
         disabled={isLoading}
         className="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition bg-red-50 hover:bg-red-500 hover:text-white text-red-600 disabled:opacity-50"

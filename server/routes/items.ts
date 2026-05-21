@@ -12,6 +12,7 @@ import {
   addCustomIdsBatch,
   selectItemsBatch,
   unselectItemsBatch,
+  seedSelectedState,
 } from "../state.js";
 
 const router = Router();
@@ -230,6 +231,23 @@ router.post("/unselect-batch", (req, res) => {
     }
     const result = unselectItemsBatch(ids);
     res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/items/dev/seed-selected (Dev & Manual/E2E test helper)
+router.post("/dev/seed-selected", (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids)) {
+      res.status(400).json({ error: "ids must be an array of positive integers" });
+      return;
+    }
+    // Convert elements to numbers
+    const idNumbers = ids.map((val) => Number(val));
+    seedSelectedState(idNumbers);
+    res.json({ success: true, seededCount: idNumbers.length });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
