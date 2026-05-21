@@ -106,7 +106,7 @@ export default function Panel({
       setError(null);
       try {
         let res: PaginatedResponse;
-        
+
         // Task 3: Normal search reads go through queue; mutation reconciliation (indicated by refreshTrigger > 0)
         // may bypass queued reads to prevent stale UI duplication.
         const isReconciliation = refreshTrigger > 0;
@@ -513,7 +513,7 @@ export default function Panel({
                     <div className="flex flex-col gap-1.5">
                       {Array.from(pendingAddIds).map((id) => (
                         <div
-                           key={`pending-add-${id}`}
+                          key={`pending-add-${id}`}
                           className="flex items-center justify-between px-3.5 py-2.5 bg-white border border-amber-200/40 rounded-lg shadow-sm animate-pulse"
                         >
                           <div className="flex items-center gap-2">
@@ -536,7 +536,8 @@ export default function Panel({
                   <div className="divide-y divide-slate-100 border border-slate-50 rounded-xl overflow-hidden bg-slate-50/20">
                     {visibleItems.map((item) => {
                       const isPendingSelect = pendingSelectIds.has(item.id);
-                      const isLoading = actionLoadingId === item.id || isPendingSelect || clickedIds.has(item.id);
+                      const isLoading =
+                        actionLoadingId === item.id || isPendingSelect || clickedIds.has(item.id);
                       return (
                         <div
                           id={`${idPrefix}-item-row-${item.id}`}
