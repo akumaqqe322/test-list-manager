@@ -11,7 +11,11 @@
     "lint": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "preview:prod": "npm run build && NODE_ENV=production npm start"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

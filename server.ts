@@ -5,7 +5,7 @@ import itemsRouter from "./server/routes/items.js";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Middleware to parse JSON body
   app.use(express.json());

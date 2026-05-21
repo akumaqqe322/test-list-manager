@@ -87,11 +87,60 @@ To manually verify the Drag & Drop functionalities:
 
 ### 2. Automated E2E Testing
 
-To run the automated E2E tests:
+To run the automated E2E tests with automated dev server orchestration (via Playwright's `webServer` integration):
 
-1. Make sure the development server is actively running on port 3000 (`npm run dev`).
-2. Run the Playwright test script:
+1. Clean assets and run the automated browser test suite inside the test runner:
    ```bash
    npx playwright test
    ```
-   _(Note: Browser binary installation can be initialized if needed via `npx playwright install`)_
+   _(Note: Browser library installation can be initialized if needed via `npx playwright install chromium`)_
+
+---
+
+## Technical Assignment Compliance Checklist
+
+Below is the verified compliance status matching every requested item of the original technical assignment prompt:
+
+- [x] **1,000,000 Virtual Range**: Handled as a lazy math-driven numerical sequence ($1 \dots 1,000,000$). No physical items are generated or state-allocated in React.
+- [x] **Separation of Selection**: Selected items are instantly removed and excluded from the Available panel view.
+- [x] **Manually Added Customs**: Custom positive integers (e.g., above $1,000,000$) participate seamlessly in global text search, pagination, selection pools, and lists.
+- [x] **De-duplicated Registrations**: Server-side and client-side guards prevent duplicate customs or redundant selections.
+- [x] **In-Memory Shared Backend**: Express server controls and manages the core single-source-of-truth in RAM, sharing current listings across all visitors. No external database is used.
+- [x] **Deterministic Pagination**: Features offset/cursor bounds limiting every network batch page request to exactly **20 elements max**. Infinite scroll triggers page requests strictly as the scroll boundary is met.
+- [x] **Filtering Sync Reset**: The frontend resets pagination pages and list offsets immediately whenever search filters are typed.
+- [x] **Selected Drag & Drop Sorting**: Fully implemented using `@dnd-kit`. Users can drag or keyboard-reorder elements on the selected pane.
+- [x] **Stable Filtered Drag & Drop**: Dragging visible filtered selected items preserves hidden/unfiltered elements' order in the backend and frontend state stably.
+- [x] **Decoupled Request Queue**: Features sequential async pipe execution.
+  - **Custom additions addition-batching**: Held and batched in **10 second windows** to reduce DB write emulation spikes.
+  - **Changes & reads**: Coalesced and executed in **1 second windows**.
+  - **Conflicts compaction**: Dedupes and cancels matching selections/removals on the same ID in the same window, sending only the final compacted intent.
+
+---
+
+## Deployment on Render Free Web Service
+
+This project is fully automated and optimized to run as a unified full-stack Node web service on Render's Free tier.
+
+### 1. Step-by-Step Render Deployment Flow
+
+1. **Sign in to Render** (dashboard.render.com).
+2. Click **New** in the top right, then choose **Web Service**.
+3. Connect your **GitHub / GitLab repository** containing this codebase.
+4. Set the following configuration settings:
+   - **Name**: `virtual-list-manager` (or your preferred name)
+   - **Runtime**: `Node`
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+   - **Health Check Path**: `/api/health`
+5. Click **Advanced**, and configure the environment variables:
+   - **NODE_ENV**: `production`
+6. Choose the **Free Instance Type**.
+7. Click **Create Web Service**.
+
+Your site will build, run tests, and serve at a public URL like `https://virtual-list-manager.onrender.com`.
+
+### 2. Render Free Web Service Constraints and Limitations
+
+- **In-Memory Transient Storage**: Because this spec requires no database, all selected list entries, sorting weights, and custom custom entries reside directly in Express state arrays in RAM. Render's Free web services can spin down, reboot, or cycle after 15 minutes of inactivity, which will clear the custom-added items and restore the empty default state.
+- **Unified Global State**: There are no individual visitor accounts (this keeps the implementation matching the assignment spec). The selected state, additions, and drag sequence are shared by all visitors viewing the interface live.
+- **Omitted Cross-Panel Drag & Drop**: Drag & Drop is intentionally loaded purely for reordering the **Selected Items** panel. Moving items from the Available panel to the Selected panel remains button-controlled via the high-fidelity **Select / Remove** action triggers. This avoids structural over-engineering or pointer-lock issues in narrow layouts.
