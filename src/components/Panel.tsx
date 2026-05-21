@@ -13,6 +13,8 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -232,9 +234,15 @@ export default function Panel({
 
   // Set up DnD sensors
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
         distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -305,7 +313,7 @@ export default function Panel({
     >
       {/* Panel Header */}
       <div id={`${idPrefix}-header`} className="p-5 border-b border-slate-100 bg-slate-50/50">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-1">
           <h2
             id={`${idPrefix}-title`}
             className="text-lg font-semibold font-sans text-slate-800 tracking-tight"
@@ -316,6 +324,11 @@ export default function Panel({
             {type === "available" ? "Unselected Pool" : "Selected Order"}
           </span>
         </div>
+        <p className="text-slate-400 text-xs mb-3 font-normal">
+          {type === "available"
+            ? "Use Select to move items into the selected list."
+            : "Drag selected rows by the handle to reorder them."}
+        </p>
 
         {/* Search Bar */}
         <div className="relative">

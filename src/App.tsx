@@ -31,7 +31,7 @@ export default function App() {
                 Virtual List Manager
               </h1>
               <p className="text-[10px] uppercase tracking-wider font-mono text-slate-400">
-                Step 1: In-Memory Foundation
+                Queued & Batched Engine
               </p>
             </div>
           </div>
@@ -169,7 +169,8 @@ export default function App() {
                 </div>
                 <div className="p-3 bg-slate-50 rounded-lg">
                   <span className="font-medium text-slate-700 block mb-1">Queue Integration</span>
-                  Ready to be coupled with the batching and debouncing layer in subsequent stages.
+                  Fully active with deduplication, conflicts compaction, and sequential batch
+                  flushes (10s additions, 1s reads/changes).
                 </div>
               </div>
             </div>

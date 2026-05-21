@@ -51,20 +51,21 @@ export function SortableItemRow({
     >
       <div className="flex items-center gap-2.5">
         {/* Isolated Drag Handle */}
-        <button
+        <div
           {...attributes}
           {...listeners}
-          type="button"
+          role="button"
+          tabIndex={0}
           aria-label={`Drag item ${item.id}`}
           data-testid={`drag-handle-${item.id}`}
           className="p-1.5 px-2.5 hover:bg-slate-100 border border-slate-100 hover:border-slate-200 rounded cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 flex items-center gap-1.5 transition-all"
           title="Drag handle to reorder"
         >
           <GripVertical className="w-4 h-4 text-slate-400 shrink-0" />
-          <span className="text-[10px] text-slate-500 font-medium select-none pointer-events-none hidden sm:inline">
+          <span className="text-[10px] text-slate-500 font-medium select-none pointer-events-none hidden sm:inline border-r border-slate-200 pr-2">
             Drag to reorder
           </span>
-        </button>
+        </div>
         <span className="text-xs font-semibold text-slate-300">#</span>
         <span className="text-sm font-mono font-medium text-slate-800">
           {item.id.toLocaleString()}

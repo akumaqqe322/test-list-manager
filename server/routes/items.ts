@@ -238,6 +238,10 @@ router.post("/unselect-batch", (req, res) => {
 
 // POST /api/items/dev/seed-selected (Dev & Manual/E2E test helper)
 router.post("/dev/seed-selected", (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(404).json({ error: "Endpoint not found" });
+    return;
+  }
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids)) {
