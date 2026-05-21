@@ -37,7 +37,7 @@ npm start
 
 ---
 
-## Currently Implemented Architecture (Step 1 & 1.5)
+## Currently Implemented Architecture (Step 1, 1.5 & Step 2)
 
 * **Virtual List Engine**: Models a sequence from 1 to 1,000,000 using lazy-iteration algorithms and sorted arrays. Avoids physical object allocations to keep memory complexity to $O(K)$, where $K$ is the number of added or selected items.
 * **Separated State Boundaries**: Keeps data structures stored in in-memory singletons inside `/server/state.ts`.
@@ -45,10 +45,10 @@ npm start
 * **Dual Panel Viewport**: Real-time side-by-side available and selected item lists, each rendering 20-item pages on demand.
 * **Infinite Scroll**: Utilizes `IntersectionObserver` sentinel callbacks in React to append extra listings as the user scrolls.
 * **Custom Sub-item Registration**: Allows registering arbitrary safe positive integer IDs outside of the 1..1,000,000 baseline. Performs exact duplicate detection.
+* **Filtered Drag & Drop Sorting**: Incorporates `@dnd-kit/core` and `@dnd-kit/sortable` on the Selected Items panel. Allows active sorting under arbitrary subsearch input filters. The backend algorithm isolates the visible reordered subset, leaving any hidden or unloaded selected numbers in their original chronological order.
 
 ---
 
 ## Roadmap
 
-1. **Step 2 (Drag & Drop sorting)**: Integrate `@dnd-kit` to reorder selected items dynamically (preserving original positions of filtered items).
-2. **Step 3 (Client-side request queueing)**: Implement a custom queueing module with debounce parameters to batch item selection mutations (flushing once every 10 seconds for custom additions and once every 1 second for reads/mutations).
+1. **Step 3 (Client-side request queueing)**: Implement a custom queueing module with debounce parameters to batch item selection mutations (flushing once every 10 seconds for custom additions and once every 1 second for reads/mutations).

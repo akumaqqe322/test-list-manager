@@ -8,6 +8,7 @@ import {
   selectItem,
   unselectItem,
   selectedIds,
+  reorderSelectedVisible,
 } from "../state.js";
 
 const router = Router();
@@ -139,6 +140,48 @@ router.post("/unselect", (req, res) => {
 
     unselectItem(id);
     res.json({ success: true, unselectedId: id });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/items/reorder
+router.post("/reorder", (req, res) => {
+  try {
+    const { orderedVisibleIds, search } = req.body;
+
+    if (!Array.isArray(orderedVisibleIds) || orderedVisibleIds.length === 0) {
+      res.status(400).json({ error: "orderedVisibleIds must be a non-empty array" });
+      return;
+    }
+
+    const searchVal = typeof search === "string" ? search : "";
+
+    // Validate that every ID is a positive safe integer and currently selected
+    const uniqueChecked = new Set<number>();
+    for (const id of orderedVisibleIds) {
+      if (!isValidId(id)) {
+        res.status(400).json({ error: "All visible IDs must be positive safe integers" });
+        return;
+      }
+      if (!selectedIds.has(id)) {
+        res.status(400).json({ error: `ID ${id} is not currently selected` });
+        return;
+      }
+      if (uniqueChecked.has(id)) {
+        res.status(400).json({ error: `Duplicate ID ${id} detected in reorder list` });
+        return;
+      }
+      // Check if it matches search
+      if (searchVal.trim() && String(id).indexOf(searchVal.trim()) === -1) {
+        res.status(400).json({ error: `ID ${id} does not match the current search filter` });
+        return;
+      }
+      uniqueChecked.add(id);
+    }
+
+    reorderSelectedVisible(orderedVisibleIds, searchVal);
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

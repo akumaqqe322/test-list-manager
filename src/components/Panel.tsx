@@ -2,6 +2,22 @@ import React, { useState, useEffect, useRef } from "react";
 import { Search, Plus, RotateCw, Loader2, ArrowRightLeft } from "lucide-react";
 import { Item, PaginatedResponse } from "../types";
 import { apiClient } from "../api/client";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { SortableItemRow } from "./SortableItemRow";
 
 interface PanelProps {
   idPrefix: string;
@@ -192,6 +208,45 @@ export default function Panel({
     }
   }
 
+  // Set up DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldItems = [...items];
+
+    // Optimistically update list order locally
+    setItems((prev) => {
+      const oldIndex = prev.findIndex((item) => item.id === active.id);
+      const newIndex = prev.findIndex((item) => item.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+
+    try {
+      const oldIdx = oldItems.findIndex(i => i.id === active.id);
+      const newIdx = oldItems.findIndex(i => i.id === over.id);
+      if (oldIdx !== -1 && newIdx !== -1) {
+        const reorderedSlice = arrayMove(oldItems, oldIdx, newIdx);
+        const orderedVisibleIds = reorderedSlice.map((item) => item.id);
+        
+        await apiClient.reorderSelectedItems(orderedVisibleIds, debouncedSearch);
+        // Note: we don't trigger a full parent reset to avoid pagination reset, preserving
+        // any unloaded item orders cleanly on the server & client side.
+      }
+    } catch (err: any) {
+      setItems(oldItems);
+      setError(err.message || "Failed to save order");
+    }
+  }
+
   return (
     <div
       id={`${idPrefix}-container`}
@@ -297,40 +352,61 @@ export default function Panel({
           </div>
         ) : (
           <>
-            <div className="divide-y divide-slate-100 border border-slate-50 rounded-xl overflow-hidden bg-slate-50/20">
-              {items.map((item) => (
-                <div
-                  id={`${idPrefix}-item-row-${item.id}`}
-                  key={item.id}
-                  className="flex items-center justify-between p-3.5 hover:bg-slate-50/80 transition-colors bg-white"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-xs font-semibold text-slate-300">#</span>
-                    <span className="text-sm font-mono font-medium text-slate-800">
-                      {item.id.toLocaleString()}
-                    </span>
-                  </div>
-
-                  <button
-                    id={`${idPrefix}-item-action-${item.id}`}
-                    onClick={() => handleToggleAction(item.id)}
-                    disabled={actionLoadingId === item.id}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition ${
-                      type === "available"
-                        ? "bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-700"
-                        : "bg-red-50 hover:bg-red-500 hover:text-white text-red-600"
-                    }`}
+            {type === "available" ? (
+              <div className="divide-y divide-slate-100 border border-slate-50 rounded-xl overflow-hidden bg-slate-50/20">
+                {items.map((item) => (
+                  <div
+                    id={`${idPrefix}-item-row-${item.id}`}
+                    key={item.id}
+                    className="flex items-center justify-between p-3.5 hover:bg-slate-50/80 transition-colors bg-white"
                   >
-                    {actionLoadingId === item.id ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <ArrowRightLeft className="w-3 h-3" />
-                    )}
-                    {type === "available" ? "Select" : "Unselect"}
-                  </button>
-                </div>
-              ))}
-            </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xs font-semibold text-slate-300">#</span>
+                      <span className="text-sm font-mono font-medium text-slate-800">
+                        {item.id.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <button
+                      id={`${idPrefix}-item-action-${item.id}`}
+                      onClick={() => handleToggleAction(item.id)}
+                      disabled={actionLoadingId === item.id}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-700"
+                    >
+                      {actionLoadingId === item.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <ArrowRightLeft className="w-3 h-3" />
+                      )}
+                      Select
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={items.map((item) => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="flex flex-col gap-1 rounded-xl overflow-hidden bg-slate-50/30 p-1">
+                    {items.map((item) => (
+                      <SortableItemRow
+                        key={item.id}
+                        item={item}
+                        idPrefix={idPrefix}
+                        onAction={handleToggleAction}
+                        actionLoadingId={actionLoadingId}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
 
             {/* Sentinel element to trigger background infinite scroll load */}
             <div

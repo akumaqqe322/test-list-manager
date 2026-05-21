@@ -227,3 +227,33 @@ export function updateSelectedOrder(newOrder: number[]): void {
     selectedIds.add(id);
   }
 }
+
+/**
+ * Reorders only the selected IDs that are visible under the current filter/search.
+ * Keeps hidden/unloaded selected IDs in their previous positions.
+ */
+export function reorderSelectedVisible(orderedVisibleIds: number[], search: string): void {
+  const searchStr = search.trim();
+  const hasSearch = searchStr.length > 0;
+  
+  // Create a set of IDs to reorder (the ones supplied from the front-end)
+  const toReorderSet = new Set(orderedVisibleIds);
+
+  let replacementIdx = 0;
+  const newOrder = selectedOrder.map(id => {
+    if (toReorderSet.has(id)) {
+      const replacement = orderedVisibleIds[replacementIdx];
+      replacementIdx++;
+      return replacement;
+    }
+    return id;
+  });
+
+  selectedOrder = newOrder;
+  
+  // Re-sync selectedIds Set just in case
+  selectedIds.clear();
+  for (const id of selectedOrder) {
+    selectedIds.add(id);
+  }
+}

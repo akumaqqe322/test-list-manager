@@ -81,4 +81,16 @@ export const apiClient = {
     });
     return handleResponse<{ success: boolean; unselectedId: number }>(response);
   },
+
+  /**
+   * Reorders visible elements in selected list under search filter.
+   */
+  async reorderSelectedItems(orderedVisibleIds: number[], search: string): Promise<{ success: boolean }> {
+    const response = await fetch("/api/items/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderedVisibleIds, search }),
+    });
+    return handleResponse<{ success: boolean }>(response);
+  },
 };
