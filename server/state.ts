@@ -225,6 +225,124 @@ export function updateSelectedOrder(newOrder: number[]): void {
   for (const id of selectedOrder) {
     selectedIds.add(id);
   }
+  assertSelectedStateInvariant();
+}
+
+/**
+ * Verifies that state structures remain completely synchronized and unique.
+ */
+export function assertSelectedStateInvariant(): void {
+  if (selectedOrder.length !== selectedIds.size) {
+    throw new Error(
+      `State invariant breached: selectedOrder length (${selectedOrder.length}) does not match selectedIds size (${selectedIds.size})`
+    );
+  }
+  const seen = new Set<number>();
+  for (const id of selectedOrder) {
+    if (seen.has(id)) {
+      throw new Error(`State invariant breached: duplicate ID ${id} in selectedOrder`);
+    }
+    seen.add(id);
+    if (!selectedIds.has(id)) {
+      throw new Error(
+        `State invariant breached: ID ${id} is in selectedOrder but not in selectedIds Set`
+      );
+    }
+  }
+  for (const id of selectedIds) {
+    if (!seen.has(id)) {
+      throw new Error(
+        `State invariant breached: ID ${id} is in selectedIds Set but not in selectedOrder`
+      );
+    }
+  }
+}
+
+export interface BatchAddResult {
+  success: boolean;
+  addedIds: number[];
+  skippedIds: number[];
+  errors: { id: any; reason: string }[];
+}
+
+export function addCustomIdsBatch(ids: any[]): BatchAddResult {
+  const result: BatchAddResult = { success: true, addedIds: [], skippedIds: [], errors: [] };
+  const inputSet = new Set(ids);
+  for (const rawId of inputSet) {
+    if (!isValidId(rawId)) {
+      result.errors.push({ id: rawId, reason: "ID must be a positive safe integer" });
+      continue;
+    }
+    const id = rawId;
+    if (itemExists(id)) {
+      result.skippedIds.push(id);
+    } else {
+      addCustomId(id);
+      result.addedIds.push(id);
+    }
+  }
+  return result;
+}
+
+export interface BatchSelectResult {
+  success: boolean;
+  selectedIds: number[];
+  skippedIds: number[];
+  errors: { id: any; reason: string }[];
+}
+
+export function selectItemsBatch(ids: any[]): BatchSelectResult {
+  const result: BatchSelectResult = { success: true, selectedIds: [], skippedIds: [], errors: [] };
+  const inputSet = new Set(ids);
+  for (const rawId of inputSet) {
+    if (!isValidId(rawId)) {
+      result.errors.push({ id: rawId, reason: "ID must be a positive safe integer" });
+      continue;
+    }
+    const id = rawId;
+    if (!itemExists(id)) {
+      result.errors.push({ id, reason: `ID ${id} does not exist in the system` });
+    } else if (selectedIds.has(id)) {
+      result.skippedIds.push(id);
+    } else {
+      selectItem(id);
+      result.selectedIds.push(id);
+    }
+  }
+  assertSelectedStateInvariant();
+  return result;
+}
+
+export interface BatchUnselectResult {
+  success: boolean;
+  unselectedIds: number[];
+  skippedIds: number[];
+  errors: { id: any; reason: string }[];
+}
+
+export function unselectItemsBatch(ids: any[]): BatchUnselectResult {
+  const result: BatchUnselectResult = {
+    success: true,
+    unselectedIds: [],
+    skippedIds: [],
+    errors: [],
+  };
+  const inputSet = new Set(ids);
+  for (const rawId of inputSet) {
+    if (!isValidId(rawId)) {
+      result.errors.push({ id: rawId, reason: "ID must be a positive safe integer" });
+      continue;
+    }
+    const id = rawId;
+    if (!selectedIds.has(id)) {
+      result.skippedIds.push(id);
+    } else {
+      unselectItem(id);
+      result.unselectedIds.push(id);
+    }
+  }
+  assertSelectedStateInvariant();
+  return result;
 }
 
 /**
@@ -274,4 +392,6 @@ export function reorderSelectedVisible(orderedVisibleIds: number[], search: stri
   for (const id of selectedOrder) {
     selectedIds.add(id);
   }
+
+  assertSelectedStateInvariant();
 }

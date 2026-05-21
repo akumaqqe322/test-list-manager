@@ -9,6 +9,9 @@ import {
   unselectItem,
   selectedIds,
   reorderSelectedVisible,
+  addCustomIdsBatch,
+  selectItemsBatch,
+  unselectItemsBatch,
 } from "../state.js";
 
 const router = Router();
@@ -182,6 +185,51 @@ router.post("/reorder", (req, res) => {
 
     reorderSelectedVisible(orderedVisibleIds, searchVal);
     res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/items/add-batch
+router.post("/add-batch", (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids)) {
+      res.status(400).json({ error: "ids field is required and must be an array" });
+      return;
+    }
+    const result = addCustomIdsBatch(ids);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/items/select-batch
+router.post("/select-batch", (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids)) {
+      res.status(400).json({ error: "ids field is required and must be an array" });
+      return;
+    }
+    const result = selectItemsBatch(ids);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/items/unselect-batch
+router.post("/unselect-batch", (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids)) {
+      res.status(400).json({ error: "ids field is required  and must be an array" });
+      return;
+    }
+    const result = unselectItemsBatch(ids);
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

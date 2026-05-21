@@ -44,7 +44,7 @@ npm start
 
 ---
 
-## Currently Implemented Architecture (Step 1, 1.5 & Step 2)
+## Currently Implemented Architecture (Step 1, 2, and 3)
 
 - **Virtual List Engine**: Models a sequence from 1 to 1,000,000 using lazy-iteration algorithms and sorted arrays. Avoids physical object allocations to keep memory complexity to $O(K)$, where $K$ is the number of added or selected items.
 - **Separated State Boundaries**: Keeps data structures stored in in-memory singletons inside `/server/state.ts`.
@@ -54,9 +54,10 @@ npm start
 - **Custom Sub-item Registration**: Allows registering arbitrary safe positive integer IDs outside of the 1..1,000,000 baseline. Performs exact duplicate detection.
 - **Filtered Drag & Drop Sorting**: Incorporates `@dnd-kit/core` and `@dnd-kit/sortable` on the Selected Items panel. Allows active sorting under arbitrary search input filters. The backend algorithm isolates the visible reordered subset, leaving any hidden or unloaded selected numbers in their original chronological order.
 - **Drag & Drop Pagination Sync**: Optimistically recalculates and synchronizes the pagination `nextCursor` on the frontend directly after reordering. This ensures that subsequent infinite scroll requests pick up exactly from the new last loaded element in the reordered list without skipped items or duplicates.
-
----
-
-## Roadmap
-
-1. **Step 3 (Client-side request queueing)**: Implement a custom queueing module with debounce parameters to batch item selection mutations (flushing once every 10 seconds for custom additions and once every 1 second for reads/mutations).
+- **Request Queueing & Batching (Step 3)**:
+  - **Client-Side Request Queue**: All UI API queries transparently pass through `src/api/requestQueue.ts`.
+  - **Deduplication**: Automatically groups identical reads, selects, or unselects to eliminate redundant HTTP requests.
+  - **Add Batching (10s lock)**: Custom numerical additions are held and flushed once every 10 seconds via `POST /api/items/add-batch`.
+  - **Read/Change Batching (1s lock)**: Selects (`POST /api/items/select-batch`), unselects (`POST /api/items/unselect-batch`), and reads are debounced and dispatched in 1-second interval waves.
+  - **Visual Queue Status**: Highlights pending custom additions with interactive count badges and amber pulses, updating the list synchronously upon batch dispatch.
+  - **Backend Invariant Assertions**: Implements rigorous state checks following any selection or reorder event, ensuring indices size and order remain perfectly aligned.

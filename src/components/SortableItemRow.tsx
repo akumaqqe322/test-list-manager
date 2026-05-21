@@ -9,6 +9,7 @@ interface SortableItemRowProps {
   idPrefix: string;
   onAction: (id: number) => void | Promise<void>;
   actionLoadingId: number | null;
+  isPending?: boolean;
   key?: React.Key;
 }
 
@@ -17,6 +18,7 @@ export function SortableItemRow({
   idPrefix,
   onAction,
   actionLoadingId,
+  isPending,
 }: SortableItemRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
@@ -25,9 +27,11 @@ export function SortableItemRow({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.6 : 1,
+    opacity: isDragging ? 0.6 : isPending ? 0.5 : 1,
     boxShadow: isDragging ? "0 8px 16px -2px rgba(0,0,0,0.1)" : "none",
   };
+
+  const isLoading = actionLoadingId === item.id || isPending;
 
   return (
     <div
@@ -59,15 +63,15 @@ export function SortableItemRow({
       <button
         id={`${idPrefix}-item-action-${item.id}`}
         onClick={() => onAction(item.id)}
-        disabled={actionLoadingId === item.id}
+        disabled={isLoading}
         className="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition bg-red-50 hover:bg-red-500 hover:text-white text-red-600 disabled:opacity-50"
       >
-        {actionLoadingId === item.id ? (
+        {isLoading ? (
           <Loader2 className="w-3 h-3 animate-spin" />
         ) : (
           <ArrowRightLeft className="w-3 h-3" />
         )}
-        Unselect
+        {isPending ? "Pending..." : "Unselect"}
       </button>
     </div>
   );

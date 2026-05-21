@@ -3,6 +3,12 @@ import { Search, Plus, RotateCw, Loader2, ArrowRightLeft } from "lucide-react";
 import { Item, PaginatedResponse } from "../types";
 import { apiClient } from "../api/client";
 import {
+  subscribeToQueue,
+  getPendingAddIds,
+  getPendingSelectIds,
+  getPendingUnselectIds,
+} from "../api/requestQueue";
+import {
   DndContext,
   closestCenter,
   KeyboardSensor,
@@ -42,6 +48,21 @@ export default function Panel({
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Queue state tracking
+  const [pendingAddIds, setPendingAddIds] = useState<Set<number>>(new Set());
+  const [pendingSelectIds, setPendingSelectIds] = useState<Set<number>>(new Set());
+  const [pendingUnselectIds, setPendingUnselectIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    function updateQueueState() {
+      setPendingAddIds(new Set(getPendingAddIds()));
+      setPendingSelectIds(new Set(getPendingSelectIds()));
+      setPendingUnselectIds(new Set(getPendingUnselectIds()));
+    }
+    updateQueueState();
+    return subscribeToQueue(updateQueueState);
+  }, []);
 
   // Custom ID addition state (available panel only)
   const [customIdText, setCustomIdText] = useState("");
@@ -190,22 +211,22 @@ export default function Panel({
       return;
     }
 
-    setAddLoading(true);
-    try {
-      await apiClient.addCustomId(numericId);
-      setAddSuccess(`Custom ID ${numericId} added successfully!`);
-      setCustomIdText("");
-      onActionSuccess();
+    const targetId = numericId;
+    setCustomIdText("");
+    setAddSuccess(`ID ${targetId} queued for addition (batched every 10s)`);
 
-      // Clear success notification after 3 seconds
-      setTimeout(() => {
-        setAddSuccess(null);
-      }, 3000);
-    } catch (err: any) {
-      setAddError(err.message || "Failed to add ID");
-    } finally {
-      setAddLoading(false);
-    }
+    apiClient
+      .addCustomId(targetId)
+      .then(() => {
+        setAddSuccess(`ID ${targetId} successfully added to pool!`);
+        onActionSuccess();
+        setTimeout(() => {
+          setAddSuccess(null);
+        }, 3000);
+      })
+      .catch((err: any) => {
+        setAddError(err.message || `Failed to add ID ${targetId}`);
+      });
   }
 
   // Set up DnD sensors
@@ -307,14 +328,9 @@ export default function Panel({
               <button
                 id="custom-id-add-button"
                 type="submit"
-                disabled={addLoading}
                 className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-medium flex items-center gap-1 transition disabled:opacity-50"
               >
-                {addLoading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Plus className="w-3.5 h-3.5" />
-                )}
+                <Plus className="w-3.5 h-3.5" />
                 Add
               </button>
             </div>
@@ -328,6 +344,9 @@ export default function Panel({
                 {addSuccess}
               </p>
             )}
+            <p className="text-[10px] text-slate-400 mt-1 italic leading-tight">
+              * Operations are queued and dispatched in 10-second intervals to minimize server load.
+            </p>
           </form>
         )}
       </div>
@@ -353,7 +372,7 @@ export default function Panel({
             <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
             <span className="text-xs">Preparing dataset...</span>
           </div>
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && pendingAddIds.size === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-100">
             <p className="text-sm font-medium">No items found</p>
             <p className="text-xs text-slate-400 mt-1">
@@ -363,35 +382,75 @@ export default function Panel({
         ) : (
           <>
             {type === "available" ? (
-              <div className="divide-y divide-slate-100 border border-slate-50 rounded-xl overflow-hidden bg-slate-50/20">
-                {items.map((item) => (
-                  <div
-                    id={`${idPrefix}-item-row-${item.id}`}
-                    key={item.id}
-                    className="flex items-center justify-between p-3.5 hover:bg-slate-50/80 transition-colors bg-white"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs font-semibold text-slate-300">#</span>
-                      <span className="text-sm font-mono font-medium text-slate-800">
-                        {item.id.toLocaleString()}
+              <div className="space-y-4">
+                {/* Visual Queue/Pending Additions */}
+                {pendingAddIds.size > 0 && (
+                  <div className="space-y-1.5 p-3.5 bg-amber-50/35 border border-amber-200/50 rounded-xl">
+                    <p className="text-[10px] font-semibold tracking-wider uppercase text-amber-700 font-sans flex items-center gap-1.5">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                       </span>
+                      Queued Additions ({pendingAddIds.size})
+                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      {Array.from(pendingAddIds).map((id) => (
+                        <div
+                          key={`pending-add-${id}`}
+                          className="flex items-center justify-between px-3.5 py-2.5 bg-white border border-amber-200/40 rounded-lg shadow-sm animate-pulse"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-amber-300">#</span>
+                            <span className="text-xs font-mono font-medium text-amber-800">
+                              {id.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[10px] text-amber-600 font-medium">
+                            <Loader2 className="w-3 h-3 animate-spin text-amber-550" />
+                            <span>Queued (10s max)</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-
-                    <button
-                      id={`${idPrefix}-item-action-${item.id}`}
-                      onClick={() => handleToggleAction(item.id)}
-                      disabled={actionLoadingId === item.id}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-700"
-                    >
-                      {actionLoadingId === item.id ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <ArrowRightLeft className="w-3 h-3" />
-                      )}
-                      Select
-                    </button>
                   </div>
-                ))}
+                )}
+
+                {items.length > 0 && (
+                  <div className="divide-y divide-slate-100 border border-slate-50 rounded-xl overflow-hidden bg-slate-50/20">
+                    {items.map((item) => {
+                      const isPendingSelect = pendingSelectIds.has(item.id);
+                      const isLoading = actionLoadingId === item.id || isPendingSelect;
+                      return (
+                        <div
+                          id={`${idPrefix}-item-row-${item.id}`}
+                          key={item.id}
+                          className="flex items-center justify-between p-3.5 hover:bg-slate-50/80 transition-colors bg-white"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xs font-semibold text-slate-300">#</span>
+                            <span className="text-sm font-mono font-medium text-slate-800">
+                              {item.id.toLocaleString()}
+                            </span>
+                          </div>
+
+                          <button
+                            id={`${idPrefix}-item-action-${item.id}`}
+                            onClick={() => handleToggleAction(item.id)}
+                            disabled={isLoading}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition bg-slate-100 hover:bg-slate-800 hover:text-white text-slate-700 disabled:opacity-50"
+                          >
+                            {isLoading ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <ArrowRightLeft className="w-3 h-3" />
+                            )}
+                            {isPendingSelect ? "Queued" : "Select"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ) : (
               <DndContext
@@ -411,6 +470,7 @@ export default function Panel({
                         idPrefix={idPrefix}
                         onAction={handleToggleAction}
                         actionLoadingId={actionLoadingId}
+                        isPending={pendingUnselectIds.has(item.id)}
                       />
                     ))}
                   </div>
